@@ -4,35 +4,26 @@ from pathlib import Path
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import io
-
-# --- ★★★変更点：Excelの書式設定に必要なライブラリをインポート★★★ ---
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font
 
 # --------------------------------------------------------------------------------
-# ★★★ここからが追加・復活したExcel整形外科医（format_excel_sheet関数）★★★
+# Excel整形関数
 # --------------------------------------------------------------------------------
 def format_excel_sheet(ws, df):
     """Excelシートの書式（列幅、数値フォーマットなど）を整える"""
-    # 1. 列幅の自動調整
     for col_idx, column_cells in enumerate(ws.columns, 1):
         column_letter = column_cells[0].column_letter
         max_length = 0
-        # セルの値の最大文字数を探す
         for cell in column_cells:
             if cell.value is not None:
                 max_length = max(max_length, len(str(cell.value)))
-        # ヘッダー（列名）の文字数も考慮
         header_text = ws.cell(row=1, column=col_idx).value
         if header_text:
             max_length = max(max_length, len(str(header_text)))
-        # 少し余裕を持たせて列幅を設定
         ws.column_dimensions[column_letter].width = max_length + 3
 
-    # 2. 数値の書式設定
     header = [c.value for c in ws[1]]
     red_font = Font(color="FF0000")
-    
-    # 3桁区切りとマイナス赤字を適用したい列
     cols_to_format = ["在庫数", "基準数量(自動)", "基準数量(手動)", "差し引き数量", "経過日数"]
     
     for col_name in cols_to_format:
@@ -47,13 +38,12 @@ def format_excel_sheet(ws, df):
     return ws
 
 # --------------------------------------------------------------------------------
-# 分析ロジック（変更なし）
+# 分析ロジック
 # --------------------------------------------------------------------------------
 def find_column_name(df_columns, possible_names):
     return next((name for name in possible_names if name in df_columns), None)
 
 def analyze_inventory(src_file, rule_file, history_file):
-    # (この analyze_inventory 関数の中身は、前回のコードと全く同じです)
     ws_key = pd.read_excel(rule_file, sheet_name="キー", header=None, dtype=str).fillna("")
     key_dict = {str(val).strip(): str(ws_key.iloc[0, col_idx]).strip() for col_idx in range(ws_key.shape[1]) for val in ws_key.iloc[1:, col_idx] if str(val).strip()}
     manual_quantities = {}
@@ -111,33 +101,27 @@ def analyze_inventory(src_file, rule_file, history_file):
     df_auto = pd.DataFrame(low_stock_auto); df_manual = pd.DataFrame(low_stock_manual); df_long = pd.DataFrame(long_term_stock)
     return ws_src, df_auto, df_manual, df_long
 
-# --- ★★★変更点：Excelダウンロード用の関数を強化★★★ ---
+# --- Excelダウンロード用の関数 ---
 def to_excel(df_full, df_auto, df_manual, df_long):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # サマリーシートの書き込みと書式設定
         df_auto.to_excel(writer, sheet_name='不足在庫_自動', index=False)
         format_excel_sheet(writer.sheets['不足在庫_自動'], df_auto)
-        
         df_manual.to_excel(writer, sheet_name='不足在庫_手動', index=False)
         format_excel_sheet(writer.sheets['不足在庫_手動'], df_manual)
-        
         df_long.to_excel(writer, sheet_name='長期在庫', index=False)
         format_excel_sheet(writer.sheets['長期在庫'], df_long)
-        
-        # ブランドごとのシートの書き込みと書式設定
         cols_to_drop = ['INVENTORY_LEVEL']
         df_to_write = df_full.drop(columns=[col for col in cols_to_drop if col in df_full.columns])
         brands = sorted(df_to_write['ブランド'].unique())
         for brand in brands:
             brand_df = df_to_write[df_to_write['ブランド'] == brand].drop(columns=['ブランド'])
             brand_df.to_excel(writer, sheet_name=brand, index=False)
-            format_excel_sheet(writer.sheets[brand], brand_df) # 各ブランドシートにも書式設定を適用
-
+            format_excel_sheet(writer.sheets[brand], brand_df)
     return output.getvalue()
 
 # --------------------------------------------------------------------------------
-# Streamlit UI部分（変更なし）
+# Streamlit UI部分
 # --------------------------------------------------------------------------------
 st.set_page_config(layout="wide")
 st.title('📈 在庫分析ダッシュボード')
@@ -196,8 +180,4 @@ if uploaded_src_file:
         if selected_brand == "全ブランド表示":
             st.dataframe(df_full)
         else:
-            st.dataframe(df_full[df_full['ブランド'] == selected_brand])
-            st.dataframe(df_full)
-        else:
-
             st.dataframe(df_full[df_full['ブランド'] == selected_brand])
